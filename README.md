@@ -1,16 +1,15 @@
 # Noon Conference Attendance
 
 A cross-platform attendance app for daily noon conference. Residents check in
-from their phone using a roster + a daily, server-validated code. The organizer
-controls the code/topic from a passcode-protected screen and can generate and
-email an attendance report (PDF + Excel).
+from their phone by typing their name, picking their PGY level, and entering
+the day's check-in code. The organizer controls the code/topic from a
+passcode-protected screen and can generate an Excel attendance report on demand.
 
-## Stack and choice made
+## Stack and choices made
 
 - **Frontend**: Progressive Web App — React + Vite + Tailwind CSS, with a
   service worker / manifest (`vite-plugin-pwa`) so it can be added to the home
-  screen on iOS and Android with no app store submission. This was the
-  preferred default in the spec for fastest deployment across both platforms.
+  screen on iOS and Android with no app store submission.
 - **Backend**: Node.js + Express, runnable either as a normal long-lived
   server (`npm run dev`) or wrapped as a Netlify Function for deployment —
   same Express app either way (`server/src/app.js`).
@@ -18,34 +17,29 @@ email an attendance report (PDF + Excel).
   a plain SQLite file (no account needed). In production it points at a
   hosted [Turso](https://turso.tech) database, since serverless functions
   have no persistent local filesystem — the SQL is identical either way.
-- **Excel**: SheetJS (`xlsx` package).
-- **PDF**: an HTML attendance table rendered to PDF with headless Chrome via
-  `puppeteer-core` + `@sparticuz/chromium-min` (a serverless-friendly Chromium
-  build), not a binary conversion of the xlsx.
-- **Email**: `nodemailer`. Uses Resend's SMTP endpoint if `RESEND_API_KEY` is
-  set, otherwise falls back to generic SMTP credentials. No keys are hardcoded.
+- **Excel**: SheetJS (`xlsx` package). The "Generate Report" button on the
+  Organizer screen downloads an `.xlsx` directly to the browser — no email
+  step, no PDF.
 
 **Live deployment**: this is set up to deploy as a single Netlify site (PWA +
 API both on one domain, one shareable URL). See
 [DEPLOY_NETLIFY.md](DEPLOY_NETLIFY.md) for the exact steps, including the
-free accounts (Turso, Netlify, Resend) you'll need to create.
+free Turso account you'll need to create for the database.
 
 ## Folder structure
 
 ```
 noon-conference-attendance/
-  server/             Express API + libsql (SQLite/Turso) + report/email generation
+  server/             Express API + libsql (SQLite/Turso) + xlsx report generation
     src/
-      routes/         residents.js, conferences.js, checkins.js, report.js
+      routes/         conferences.js, checkins.js, report.js
       app.js          builds the Express app (routes, middleware) — no listen()
       index.js        local dev entrypoint (calls app.listen)
       db.js           schema + libsql client (local file or Turso)
       code.js         daily check-in code generator
       time.js         Eastern-time helpers (configurable)
       auth.js         organizer passcode middleware
-      report.js       xlsx + pdf builders
-      email.js        nodemailer transport + send
-      seed.js         seed script (example residents)
+      report.js       xlsx builder
     .env.example
   netlify/functions/
     api.mjs           wraps server/src/app.js with serverless-http for deployment
@@ -60,11 +54,13 @@ noon-conference-attendance/
 
 ## Data model
 
-- `residents`: id, name (unique), pgy_level, active
 - `conferences`: id, date (unique, YYYY-MM-DD), topic, check_in_code
 - `checkins`: id, conference_id, resident_name, pgy_level, timestamp
   (unique on `conference_id` + `resident_name` — enforces one check-in per
-  resident per day at the database level)
+  person per day at the database level)
+
+There is no separate residents/roster table — names are typed at check-in
+and PGY level is chosen from a dropdown (`PGY-1`, `PGY-2`, `PGY-3`, `Attending`).
 
 ## How the daily code works
 
@@ -85,7 +81,6 @@ noon-conference-attendance/
 ### Prerequisites
 
 - Node.js 18+ and npm
-- (For email) a Resend API key, or SMTP credentials from any provider
 
 ### 1. Backend
 
@@ -94,7 +89,6 @@ cd server
 cp .env.example .env
 # edit .env — see "Environment variables" below
 npm install
-npm run seed     # adds a few example residents
 npm run dev       # starts the API on http://localhost:4000
 ```
 
@@ -122,12 +116,7 @@ app icon. Use the **Organizer** tab with the passcode for organizer controls.
 | `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | Leave blank for local dev (uses a local SQLite file). Required in production — see [DEPLOY_NETLIFY.md](DEPLOY_NETLIFY.md). |
 | `TIME_ZONE` | IANA time zone for conference dates/timestamps (default `America/New_York`) |
 | `ORGANIZER_PASSCODE` | Passcode required for all organizer endpoints/screens |
-| `RESEND_API_KEY` | If set, email is sent via Resend's SMTP relay |
-| `EMAIL_FROM` | From address, e.g. `"Noon Conference <noreply@yourdomain.org>"` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | Used instead of Resend if `RESEND_API_KEY` is not set |
-| `REPORT_RECIPIENT` | Report recipient email (defaults to `KSinghal@bhmcny.org`) |
 | `WEB_ORIGIN` | CORS origin allowed to call the API (your frontend's URL) |
-| `PROGRAM_NAME` | Optional, shown in the PDF header and email body |
 
 ### `web/.env`
 
@@ -140,29 +129,22 @@ app icon. Use the **Organizer** tab with the passcode for organizer controls.
 ## Running the report flow
 
 From the Organizer screen: enter the passcode, optionally set the topic,
-view/regenerate the code, then tap **Generate and Email Report**. This:
+view/regenerate the code, then tap **Generate Report**. This downloads an
+`.xlsx` with columns `[Name, PGY, Conference Date, Topic, Check-in Time]` for
+everyone checked in on the selected date.
 
-1. Builds an `.xlsx` with columns `[Name, PGY, Conference Date, Topic, Check-in Time]`.
-2. Renders the same data as an HTML table with a header (program name, date,
-   topic, total present) and converts it to PDF via headless Chrome.
-3. Emails the PDF (with the `.xlsx` attached) to `REPORT_RECIPIENT`, subject
-   `"Noon Conference Attendance, [date], [topic]"`.
-
-You can also download the files directly without emailing:
-`GET /api/report/xlsx?date=YYYY-MM-DD` and `GET /api/report/pdf?date=YYYY-MM-DD`
-(both require the organizer passcode header).
+You can also hit the endpoint directly:
+`GET /api/report/xlsx?date=YYYY-MM-DD` (requires the organizer passcode header).
 
 ## Deploying
 
 This repo is set up to deploy as a single Netlify site (frontend + API
 function on one domain → one shareable link). Full step-by-step instructions,
-including the free third-party accounts you'll need (Turso for the database,
-Netlify for hosting, Resend for email), are in
+including the free Turso account you'll need for the database, are in
 [DEPLOY_NETLIFY.md](DEPLOY_NETLIFY.md).
 
 If you'd rather run the backend on a traditional always-on Node host instead
-(Render, Railway, Fly.io, a VPS) — which also works, and avoids the
-serverless-Chromium download step — point `TURSO_DATABASE_URL` /
+(Render, Railway, Fly.io, a VPS), point `TURSO_DATABASE_URL` /
 `TURSO_AUTH_TOKEN` at the same Turso database (or skip Turso entirely and use
 the local-file mode there, since a regular host has a persistent disk), run
 `server/src/index.js` normally, and deploy `web/` to any static host with
@@ -170,27 +152,14 @@ the local-file mode there, since a regular host has a persistent disk), run
 
 ## Assumptions made
 
-- "Generate and email report" runs against the **currently selected
-  conference date** on the Organizer screen (defaults to today); there's no
-  multi-day batch report.
-- A resident not on the roster can type their name in free text at check-in;
-  this is recorded as-is and isn't reconciled against the roster table to
-  avoid blocking a real attendee with a typo'd name. If the organizer manages
-  the roster carefully, this should rarely come up.
-- The roster picker only shows residents marked `active`. "Removing" a
-  resident soft-deletes them (`active = 0`) rather than hard-deleting, so past
-  check-in records remain intact for historical reports.
-- Resending a report for the same date is allowed any number of times (no
-  "already sent" lock), since the organizer may want to re-send after late
-  check-ins.
-- The optional scheduled daily send (e.g. 1:30 PM ET) was treated as a bonus
-  and not implemented in code; the on-demand button is the priority per spec.
-  Wiring up a `node-cron` job that calls the same logic as
-  `POST /api/report/send` would be a small follow-up if wanted.
-- PGY level is a free-ish set of options (`PGY-1`...`PGY-5`, `Other`) in the
-  UI but stored as plain text, so it adapts to non-categorical programs.
-- The deployed PDF generation uses `@sparticuz/chromium-min`, which downloads
-  a Chromium build at runtime and caches it per function instance. This adds
-  latency to the first report generation after a cold start (and on Netlify's
-  free tier, synchronous functions are capped at 10s — see the troubleshooting
-  section of [DEPLOY_NETLIFY.md](DEPLOY_NETLIFY.md) if that becomes an issue).
+- "Generate Report" runs against the **currently selected conference date**
+  on the Organizer screen (defaults to today); there's no multi-day batch report.
+- No email sending and no PDF — the report is an `.xlsx` file downloaded
+  directly by the organizer. (The original spec asked for email + PDF; this
+  was simplified at the user's request to reduce moving parts for deployment.)
+- There is no resident roster/directory. Anyone can check in by typing their
+  name; duplicate check-ins for the same name on the same date are still
+  blocked at the database level.
+- PGY level is one of `PGY-1`, `PGY-2`, `PGY-3`, or `Attending`, chosen from a
+  dropdown at check-in (stored as plain text on the backend, so the option
+  list can be changed in `web/src/pages/CheckIn.jsx` without a migration).

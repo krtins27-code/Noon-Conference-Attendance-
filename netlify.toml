@@ -6,7 +6,7 @@
 [functions]
   directory = "../netlify/functions"
   node_bundler = "esbuild"
-  external_node_modules = ["@libsql/client", "puppeteer-core", "@sparticuz/chromium-min"]
+  external_node_modules = ["@libsql/client"]
 
 [[redirects]]
   from = "/api/*"

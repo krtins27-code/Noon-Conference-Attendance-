@@ -3,7 +3,6 @@ import express from "express";
 import cors from "cors";
 import { ensureSchema } from "./db.js";
 
-import residentsRouter from "./routes/residents.js";
 import conferencesRouter from "./routes/conferences.js";
 import checkinsRouter from "./routes/checkins.js";
 import reportRouter from "./routes/report.js";
@@ -27,7 +26,6 @@ export async function createApp() {
 
   app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-  app.use("/api/residents", residentsRouter);
   app.use("/api/conferences", conferencesRouter);
   app.use("/api/checkins", checkinsRouter);
   app.use("/api/report", reportRouter);

@@ -49,20 +49,14 @@ function PasscodeGate({ onUnlock }) {
 function OrganizerPanel() {
   const [conference, setConference] = useState(null);
   const [topicInput, setTopicInput] = useState("");
-  const [attendance, setAttendance] = useState(null);
-  const [residents, setResidents] = useState([]);
-  const [newName, setNewName] = useState("");
-  const [newPgy, setNewPgy] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState("");
-  const [sending, setSending] = useState(false);
 
   const load = useCallback(() => {
     api.getOrganizerConference().then((c) => {
       setConference(c);
       setTopicInput(c.topic || "");
     });
-    api.getCheckins().then(setAttendance);
-    api.getResidents().then(setResidents);
   }, []);
 
   useEffect(() => {
@@ -83,33 +77,18 @@ function OrganizerPanel() {
     setConference(updated);
   }
 
-  async function handleSendReport() {
+  async function handleGenerateReport() {
     if (!conference) return;
-    setSending(true);
+    setGenerating(true);
     setStatus("");
     try {
-      const result = await api.sendReport(conference.date);
-      setStatus(`Report sent for ${result.date} — ${result.count} present.`);
+      await api.downloadReport(conference.date);
+      setStatus("Report downloaded.");
     } catch (err) {
       setStatus(`Error: ${err.message}`);
     } finally {
-      setSending(false);
+      setGenerating(false);
     }
-  }
-
-  async function handleAddResident(e) {
-    e.preventDefault();
-    if (!newName.trim()) return;
-    await api.addResident(newName.trim(), newPgy || null);
-    setNewName("");
-    setNewPgy("");
-    api.getResidents().then(setResidents);
-  }
-
-  async function handleRemoveResident(id) {
-    if (!confirm("Remove this resident from the roster?")) return;
-    await api.removeResident(id);
-    api.getResidents().then(setResidents);
   }
 
   function handleLogout() {
@@ -128,9 +107,7 @@ function OrganizerPanel() {
       </div>
 
       <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-        <h2 className="font-bold text-gray-900">
-          Today's Code &mdash; {conference.date}
-        </h2>
+        <h2 className="font-bold text-gray-900">Today's Code &mdash; {conference.date}</h2>
         <div className="text-4xl font-mono font-bold tracking-widest text-center bg-gray-50 rounded-xl py-4 text-brand-600">
           {conference.check_in_code}
         </div>
@@ -159,71 +136,19 @@ function OrganizerPanel() {
       </section>
 
       <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-        <div className="flex justify-between items-baseline">
-          <h2 className="font-bold text-gray-900">Attendance</h2>
-          <span className="text-sm text-gray-500">{attendance?.count ?? 0} present</span>
-        </div>
-        <div className="divide-y max-h-64 overflow-y-auto">
-          {(attendance?.checkins ?? []).map((c, i) => (
-            <div key={i} className="flex justify-between py-2 text-sm">
-              <span>
-                {c.resident_name} {c.pgy_level && <span className="text-gray-400">({c.pgy_level})</span>}
-              </span>
-              <span className="text-gray-500">
-                {new Date(c.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-              </span>
-            </div>
-          ))}
-          {attendance?.checkins?.length === 0 && (
-            <p className="text-gray-500 text-sm py-2">No check-ins yet.</p>
-          )}
-        </div>
+        <h2 className="font-bold text-gray-900">Report</h2>
+        <p className="text-sm text-gray-500">
+          Generates an Excel file with name, PGY level, date, topic, and check-in time for everyone
+          checked in today.
+        </p>
         <button
-          onClick={handleSendReport}
-          disabled={sending}
+          onClick={handleGenerateReport}
+          disabled={generating}
           className="w-full py-3 rounded-xl bg-emerald-600 disabled:opacity-40 text-white font-semibold"
         >
-          {sending ? "Generating & sending…" : "Generate and Email Report"}
+          {generating ? "Generating…" : "Generate Report"}
         </button>
         {status && <p className="text-sm text-gray-600">{status}</p>}
-      </section>
-
-      <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-        <h2 className="font-bold text-gray-900">Roster</h2>
-        <form onSubmit={handleAddResident} className="flex gap-2">
-          <input
-            type="text"
-            className="flex-1 border rounded-xl px-3 py-2"
-            placeholder="New resident name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <input
-            type="text"
-            className="w-20 border rounded-xl px-2 py-2"
-            placeholder="PGY"
-            value={newPgy}
-            onChange={(e) => setNewPgy(e.target.value)}
-          />
-          <button type="submit" className="px-3 py-2 rounded-xl bg-brand-600 text-white font-medium">
-            Add
-          </button>
-        </form>
-        <div className="divide-y max-h-64 overflow-y-auto">
-          {residents.map((r) => (
-            <div key={r.id} className="flex justify-between items-center py-2 text-sm">
-              <span>
-                {r.name} {r.pgy_level && <span className="text-gray-400">({r.pgy_level})</span>}
-              </span>
-              <button
-                onClick={() => handleRemoveResident(r.id)}
-                className="text-red-500 text-xs underline"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
       </section>
     </div>
   );

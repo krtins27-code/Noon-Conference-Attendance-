@@ -48,14 +48,33 @@ async function request(path, { method = "GET", body, organizer = false } = {}) {
   return res.blob();
 }
 
-export const api = {
-  getResidents: () => request("/residents"),
-  addResident: (name, pgy_level) =>
-    request("/residents", { method: "POST", body: { name, pgy_level }, organizer: true }),
-  updateResident: (id, data) =>
-    request(`/residents/${id}`, { method: "PUT", body: data, organizer: true }),
-  removeResident: (id) => request(`/residents/${id}`, { method: "DELETE", organizer: true }),
+async function downloadReport(date) {
+  const path = `/report/xlsx${date ? `?date=${date}` : ""}`;
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { "x-organizer-passcode": getStoredPasscode() },
+  });
+  if (!res.ok) {
+    let error = "Failed to generate report.";
+    try {
+      const data = await res.json();
+      error = data.error || error;
+    } catch {
+      // ignore
+    }
+    throw new Error(error);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `attendance-${date || "today"}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
+export const api = {
   getTodayConference: () => request("/conferences/today"),
   getOrganizerConference: (date) =>
     request(`/conferences/today/organizer${date ? `?date=${date}` : ""}`, { organizer: true }),
@@ -66,9 +85,8 @@ export const api = {
 
   checkIn: (payload) => request("/checkins", { method: "POST", body: payload }),
   getTodayCheckins: () => request("/checkins/today"),
-  getCheckins: (date) => request(`/checkins${date ? `?date=${date}` : ""}`, { organizer: true }),
 
-  sendReport: (date) => request("/report/send", { method: "POST", body: { date }, organizer: true }),
+  downloadReport,
 };
 
 export { API_URL };

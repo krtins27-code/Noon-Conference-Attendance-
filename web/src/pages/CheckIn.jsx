@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 
-const PGY_OPTIONS = ["PGY-1", "PGY-2", "PGY-3", "PGY-4", "PGY-5", "Other"];
+const PGY_OPTIONS = ["PGY-1", "PGY-2", "PGY-3", "Attending"];
 
 export default function CheckIn() {
   const [conference, setConference] = useState(null);
-  const [residents, setResidents] = useState([]);
-  const [selectedName, setSelectedName] = useState("");
-  const [typedName, setTypedName] = useState("");
-  const [useTyped, setUseTyped] = useState(false);
+  const [name, setName] = useState("");
   const [pgy, setPgy] = useState("");
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -17,14 +14,11 @@ export default function CheckIn() {
 
   useEffect(() => {
     api.getTodayConference().then(setConference).catch(() => {});
-    api.getResidents().then(setResidents).catch(() => {});
   }, []);
 
-  const name = useTyped ? typedName : selectedName;
-
   const canSubmit = useMemo(
-    () => name.trim().length > 0 && code.trim().length > 0 && !submitting,
-    [name, code, submitting]
+    () => name.trim().length > 0 && pgy.length > 0 && code.trim().length > 0 && !submitting,
+    [name, pgy, code, submitting]
   );
 
   async function handleSubmit(e) {
@@ -35,7 +29,7 @@ export default function CheckIn() {
     try {
       const result = await api.checkIn({
         resident_name: name.trim(),
-        pgy_level: pgy || null,
+        pgy_level: pgy,
         code: code.trim(),
       });
       setSuccess(result);
@@ -61,7 +55,11 @@ export default function CheckIn() {
         </p>
         <button
           className="mt-2 w-full py-3 rounded-xl bg-gray-100 text-gray-700 font-medium"
-          onClick={() => setSuccess(null)}
+          onClick={() => {
+            setSuccess(null);
+            setName("");
+            setPgy("");
+          }}
         >
           Done
         </button>
@@ -74,67 +72,36 @@ export default function CheckIn() {
       <div className="bg-white rounded-2xl shadow-sm border p-4">
         <p className="text-sm text-gray-500">Today's conference</p>
         <p className="text-lg font-semibold text-gray-900">
-          {conference ? new Date(conference.date + "T00:00:00").toLocaleDateString([], {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          }) : "Loading…"}
+          {conference
+            ? new Date(conference.date + "T00:00:00").toLocaleDateString([], {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })
+            : "Loading…"}
         </p>
         {conference?.topic && <p className="text-gray-600 mt-1">{conference.topic}</p>}
       </div>
 
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">Your name</label>
-        {!useTyped ? (
-          <>
-            <select
-              className="w-full border rounded-xl px-4 py-3 text-base bg-white"
-              value={selectedName}
-              onChange={(e) => setSelectedName(e.target.value)}
-            >
-              <option value="">Select your name…</option>
-              {residents.map((r) => (
-                <option key={r.id} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="text-sm text-brand-600 underline"
-              onClick={() => setUseTyped(true)}
-            >
-              Not on the list? Type your name instead.
-            </button>
-          </>
-        ) : (
-          <>
-            <input
-              type="text"
-              className="w-full border rounded-xl px-4 py-3 text-base"
-              placeholder="Full name"
-              value={typedName}
-              onChange={(e) => setTypedName(e.target.value)}
-            />
-            <button
-              type="button"
-              className="text-sm text-brand-600 underline"
-              onClick={() => setUseTyped(false)}
-            >
-              Pick from roster instead.
-            </button>
-          </>
-        )}
+        <input
+          type="text"
+          className="w-full border rounded-xl px-4 py-3 text-base"
+          placeholder="Full name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">PGY level (optional)</label>
+        <label className="block text-sm font-medium text-gray-700">PGY level</label>
         <select
           className="w-full border rounded-xl px-4 py-3 text-base bg-white"
           value={pgy}
           onChange={(e) => setPgy(e.target.value)}
         >
-          <option value="">Not specified</option>
+          <option value="">Select…</option>
           {PGY_OPTIONS.map((p) => (
             <option key={p} value={p}>
               {p}

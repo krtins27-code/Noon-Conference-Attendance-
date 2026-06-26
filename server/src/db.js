@@ -9,12 +9,6 @@ const authToken = process.env.TURSO_AUTH_TOKEN;
 export const db = createClient(authToken ? { url, authToken } : { url });
 
 const SCHEMA_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS residents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    pgy_level TEXT,
-    active INTEGER NOT NULL DEFAULT 1
-  )`,
   `CREATE TABLE IF NOT EXISTS conferences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL UNIQUE,

@@ -72,14 +72,6 @@ In the Netlify site → **Site configuration → Environment variables**, add:
 | `TURSO_AUTH_TOKEN` | the token from step 2 |
 | `ORGANIZER_PASSCODE` | a passcode of your choosing |
 | `TIME_ZONE` | `America/New_York` |
-| `REPORT_RECIPIENT` | `KSinghal@bhmcny.org` |
-| `RESEND_API_KEY` | your Resend API key (sign up at resend.com — free tier) |
-| `EMAIL_FROM` | e.g. `Noon Conference <noreply@yourdomain.org>` |
-| `PROGRAM_NAME` | optional, e.g. your residency program's name |
-
-(If you'd rather use SMTP instead of Resend, set `SMTP_HOST`, `SMTP_PORT`,
-`SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` instead of the two Resend variables —
-see `server/.env.example`.)
 
 You do **not** need to set `VITE_API_URL` — the frontend defaults to the
 relative path `/api`, which Netlify redirects to the function on the same domain.
@@ -93,22 +85,7 @@ a URL like `https://your-site-name.netlify.app` — that's the shareable link.
 Optionally rename it: **Site configuration → Change site name**, or attach a
 custom domain you own under **Domain management**.
 
-## 6. Seed example residents (optional)
-
-The seed script is meant for local dev (it writes to whatever `TURSO_DATABASE_URL`
-is set in your shell). To seed the production Turso database directly:
-
-```bash
-cd server
-export TURSO_DATABASE_URL="libsql://..."
-export TURSO_AUTH_TOKEN="..."
-npm install
-npm run seed
-```
-
-Or just add residents through the Organizer screen on the live site — same effect.
-
-## 7. Share it
+## 6. Share it
 
 Send residents the Netlify URL. On their phone:
 - **iOS (Safari)**: open the link → Share → "Add to Home Screen."
@@ -118,13 +95,6 @@ That gives everyone a home-screen icon that opens straight to the check-in scree
 
 ## Troubleshooting
 
-- **Function times out generating the PDF**: the first PDF generation after a
-  cold start downloads the Chromium pack (~50MB) from GitHub; subsequent
-  calls reuse the cached copy in `/tmp` for that function instance. If it's
-  consistently slow, increase the function timeout in Netlify (Pro plans
-  allow longer; free tier is capped at 10s for synchronous functions — if
-  you hit this limit, consider an Edge Function variant or a managed PDF
-  service instead of Puppeteer).
 - **CORS errors**: shouldn't happen since frontend and API share a domain in
   production. If you see them, double check `netlify.toml`'s redirect for
   `/api/*` is in effect (check the Netlify deploy log).
