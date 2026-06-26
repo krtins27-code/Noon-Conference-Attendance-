@@ -1,5 +1,5 @@
 import express from "express";
-import { db } from "../db.js";
+import { getJSON } from "../store.js";
 import { requireOrganizer } from "../auth.js";
 import { getOrCreateConference } from "./conferences.js";
 import { todayDateString } from "../time.js";
@@ -9,11 +9,8 @@ const router = express.Router();
 
 async function loadAttendance(date) {
   const conf = await getOrCreateConference(date);
-  const result = await db.execute({
-    sql: "SELECT resident_name, pgy_level, timestamp FROM checkins WHERE conference_id = ? ORDER BY timestamp ASC",
-    args: [conf.id],
-  });
-  return { date: conf.date, topic: conf.topic, checkins: result.rows };
+  const checkins = (await getJSON(`checkins:${conf.date}`)) || [];
+  return { date: conf.date, topic: conf.topic, checkins };
 }
 
 // Organizer: generate and download the attendance report as an .xlsx file.

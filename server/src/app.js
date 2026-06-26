@@ -1,15 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { ensureSchema } from "./db.js";
 
 import conferencesRouter from "./routes/conferences.js";
 import checkinsRouter from "./routes/checkins.js";
 import reportRouter from "./routes/report.js";
 
 export async function createApp() {
-  await ensureSchema();
-
   const app = express();
   app.use(cors({ origin: process.env.WEB_ORIGIN || "*" }));
   app.use(express.json());

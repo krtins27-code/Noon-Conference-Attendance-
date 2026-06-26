@@ -8,7 +8,7 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
-    "@libsql/client": "^0.14.0",
+    "@netlify/blobs": "^8.1.0",
     "cors": "^2.8.5",
     "dayjs": "^1.11.13",
     "dotenv": "^16.4.5",
