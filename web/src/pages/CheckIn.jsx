@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
+import { defaultSession, SESSION_LABELS } from "../lib/sessions.js";
+import SessionToggle from "../components/SessionToggle.jsx";
 
 const PGY_OPTIONS = ["PGY-1", "PGY-2", "PGY-3", "Attending"];
 
 export default function CheckIn() {
+  const [session, setSession] = useState(() => defaultSession());
   const [conference, setConference] = useState(null);
   const [name, setName] = useState("");
   const [pgy, setPgy] = useState("");
@@ -13,8 +16,16 @@ export default function CheckIn() {
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
-    api.getTodayConference().then(setConference).catch(() => {});
-  }, []);
+    setConference(null);
+    api.getTodayConference(session).then(setConference).catch(() => {});
+  }, [session]);
+
+  function pickSession(s) {
+    setSession(s);
+    setCode("");
+    setError("");
+    setSuccess(null);
+  }
 
   const canSubmit = useMemo(
     () => name.trim().length > 0 && pgy.length > 0 && code.trim().length > 0 && !submitting,
@@ -31,6 +42,7 @@ export default function CheckIn() {
         resident_name: name.trim(),
         pgy_level: pgy,
         code: code.trim(),
+        session,
       });
       setSuccess(result);
       setCode("");
@@ -51,7 +63,7 @@ export default function CheckIn() {
         <div className="text-5xl">✅</div>
         <h2 className="text-xl font-bold text-gray-900">You're checked in!</h2>
         <p className="text-gray-600">
-          {success.resident_name} &mdash; {time}
+          {success.resident_name} &mdash; {SESSION_LABELS[success.session] || ""} &mdash; {time}
         </p>
         <button
           className="mt-2 w-full py-3 rounded-xl bg-gray-100 text-gray-700 font-medium"
@@ -69,8 +81,10 @@ export default function CheckIn() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <SessionToggle value={session} onChange={pickSession} />
+
       <div className="bg-white rounded-2xl shadow-sm border p-4">
-        <p className="text-sm text-gray-500">Today's conference</p>
+        <p className="text-sm text-gray-500">{SESSION_LABELS[session]} conference</p>
         <p className="text-lg font-semibold text-gray-900">
           {conference
             ? new Date(conference.date + "T00:00:00").toLocaleDateString([], {
@@ -80,7 +94,16 @@ export default function CheckIn() {
               })
             : "Loading…"}
         </p>
-        {conference?.topic && <p className="text-gray-600 mt-1">{conference.topic}</p>}
+        {conference && (conference.topic || conference.presenter) ? (
+          <div className="mt-1">
+            {conference.topic && <p className="text-gray-700 font-medium">{conference.topic}</p>}
+            {conference.presenter && <p className="text-gray-500 text-sm">{conference.presenter}</p>}
+          </div>
+        ) : (
+          conference && (
+            <p className="text-gray-400 text-sm mt-1">Today's topic hasn't been posted yet.</p>
+          )
+        )}
       </div>
 
       <div className="space-y-2">
@@ -111,7 +134,9 @@ export default function CheckIn() {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">Today's check-in code</label>
+        <label className="block text-sm font-medium text-gray-700">
+          {SESSION_LABELS[session]} check-in code
+        </label>
         <input
           type="text"
           autoCapitalize="characters"
