@@ -48,8 +48,15 @@ async function request(path, { method = "GET", body, organizer = false } = {}) {
   return res.blob();
 }
 
-async function downloadReport(date) {
-  const path = `/report/xlsx${date ? `?date=${date}` : ""}`;
+function query(params) {
+  const q = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  ).toString();
+  return q ? `?${q}` : "";
+}
+
+async function downloadReport(date, session) {
+  const path = `/report/xlsx${query({ date, session })}`;
   const res = await fetch(`${API_URL}${path}`, {
     headers: { "x-organizer-passcode": getStoredPasscode() },
   });
@@ -67,7 +74,7 @@ async function downloadReport(date) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `attendance-${date || "today"}.xlsx`;
+  a.download = `attendance-${session || "noon"}-${date || "today"}.xlsx`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -75,16 +82,20 @@ async function downloadReport(date) {
 }
 
 export const api = {
-  getTodayConference: () => request("/conferences/today"),
-  getOrganizerConference: (date) =>
-    request(`/conferences/today/organizer${date ? `?date=${date}` : ""}`, { organizer: true }),
-  setTopic: (date, topic) =>
-    request(`/conferences/${date}/topic`, { method: "PUT", body: { topic }, organizer: true }),
-  regenerateCode: (date) =>
-    request(`/conferences/${date}/regenerate-code`, { method: "POST", organizer: true }),
+  getTodayConference: (session) => request(`/conferences/today${query({ session })}`),
+  getOrganizerConference: (date, session) =>
+    request(`/conferences/today/organizer${query({ date, session })}`, { organizer: true }),
+  setDetails: (date, { topic, presenter }, session) =>
+    request(`/conferences/${date}/details`, {
+      method: "PUT",
+      body: { topic, presenter, session },
+      organizer: true,
+    }),
+  regenerateCode: (date, session) =>
+    request(`/conferences/${date}/regenerate-code`, { method: "POST", body: { session }, organizer: true }),
 
   checkIn: (payload) => request("/checkins", { method: "POST", body: payload }),
-  getTodayCheckins: () => request("/checkins/today"),
+  getTodayCheckins: (session) => request(`/checkins/today${query({ session })}`),
 
   downloadReport,
 };
