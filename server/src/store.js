@@ -4,7 +4,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOCAL_FILE = path.join(__dirname, "..", "data", "store.json");
+
+// Resolved at call time so tests can point at an isolated file via STORE_FILE.
+function localFilePath() {
+  return process.env.STORE_FILE || path.join(__dirname, "..", "data", "store.json");
+}
 
 // On Netlify, getStore() works with zero configuration — the platform injects
 // the credentials a deployed function needs automatically. There's no separate
@@ -28,7 +32,7 @@ async function detectMode() {
 
 async function readLocalFile() {
   try {
-    const raw = await fs.readFile(LOCAL_FILE, "utf-8");
+    const raw = await fs.readFile(localFilePath(), "utf-8");
     return JSON.parse(raw);
   } catch {
     return {};
@@ -36,8 +40,9 @@ async function readLocalFile() {
 }
 
 async function writeLocalFile(data) {
-  await fs.mkdir(path.dirname(LOCAL_FILE), { recursive: true });
-  await fs.writeFile(LOCAL_FILE, JSON.stringify(data, null, 2));
+  const file = localFilePath();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(data, null, 2));
 }
 
 // Local-file mode does read-modify-write on one shared file; this queue
