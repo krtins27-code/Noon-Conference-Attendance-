@@ -1,0 +1,89 @@
+
+Net: check-in should work for today's conference. No code change is needed (and the source isn't on this machine anyway) — this was purely an availability outage.
+
+To stop it recurring
+The free-tier auto-pause will bite again after another inactivity stretch. Two durable options:
+
+Upgrade the Supabase project to a paid plan (never auto-pauses), or
+Keep it warm — a small scheduled ping (e.g. a cron/GitHub Action hitting /auth/v1/health every few days) prevents the pause.
+Also worth knowing: for a minute or so right after any restart, the first requests can still fail while PostgREST warms up, then recover on their own — so if a resident hits it in that window, a refresh fixes it.
+
+Want me to sketch the keep-warm cron/GitHub Action so this doesn't happen before next conference?
+
+Set up the keep-warm cron job
+
+Good call. The mechanism genuinely forks here and it touches different accounts of yours, so let me get that one decision from you and then I'll build it out. My recommendation is GitHub Actions — it's the standard keep-warm, free, and runs on GitHub's infrastructure (not dependent on your laptop being awake).
+
+Where should the keep-warm cron run? It needs to hit the Supabase DB every ~3 days (well under the 7-day pause window). Each option is reliable and cloud-based (won't depend on your Mac being on) — they differ in what you'd commit and which account it lives on.
+
+GitHub Actions (Recommended)
+
+GitHub Actions — my recommendation too. Here's the workflow. I'll write the file and send it to you; it's zero-config (the Supabase URL and anon key are already public in your shipped client bundle, so inlining them here is not a new exposure — no repo secrets to set up).
+
+Created
+keep-warm.yml
++37
+-0
+Sent
+Drop this in your repo at .github/workflows/keep-warm.yml, commit, and push.
+
+
+yml
+keep-warm.yml
+
+1.6kB
+
+The keep-warm workflow is built and sent. Here's how to activate it and what it does.
+
+To activate (about a minute)
+In your app's GitHub repo, create the folder path .github/workflows/ if it doesn't exist.
+Add the file as .github/workflows/keep-warm.yml (the file I sent).
+Commit and push to your default branch.
+That's it — GitHub picks up scheduled workflows automatically once the file is on the default branch. To confirm it works immediately, go to the repo's Actions tab → Keep Supabase warm → Run workflow (the workflow_dispatch trigger I added lets you run it on demand). A green check means the ping reached Postgres.
+What it does
+Every 3 days at 12:00 UTC, it runs one real query — GET /rest/v1/attendance?select=id&limit=1 — which touches Postgres and resets Supabase's inactivity timer. Max gap between runs is ~3 days, comfortably under the 7-day auto-pause window.
+Retries 5× with a 15s gap. If a run happens to land right after a restart, the first request can fail during warmup; the retry covers that. If all five fail, the job goes red so you get a GitHub notification that something's actually wrong.
+No secrets to configure. The URL and anon key inlined in the file are the same public values already shipped in your site's JavaScript, so this adds no new exposure. If you'd rather keep them out of the YAML, move them to repo Settings → Secrets → Actions and swap the two env: values for ${{ secrets.SUPABASE_URL }} / ${{ secrets.SUPABASE_ANON_KEY }} — but it's not necessary.
+One caveat: GitHub sometimes delays or disables scheduled workflows on repos with no recent activity of their own. If you ever notice it stopped, opening the Actions tab and hitting Run workflow re-primes it. Given check-in only needs the DB awake on conference days, this will keep you well clear of the pause.
+
+Want me to also add a second cron time (e.g. a Sunday-evening run before the Monday conference week) for extra margin, or is the every-3-days cadence good?
+
+
+
+name: Keep Supabase warm
+
+# Supabase's free tier auto-pauses a project after ~7 days of inactivity, which
+# breaks check-in. This job runs a tiny real DB query every 3 days to reset that
+# timer. The URL and anon key below are the same public values already shipped in
+# the site's client bundle, so they are safe to keep here.
+
+on:
+  schedule:
+    - cron: "0 12 */3 * *"   # 12:00 UTC, every 3rd day (max gap ~3 days, well under the 7-day window)
+  workflow_dispatch: {}       # lets you run it manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query attendance (touches Postgres)
+        env:
+          SUPABASE_URL: https://twlspcqfsfeeikmczyqo.supabase.co
+          SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3bHNwY3Fmc2ZlZWlrbWN6eXFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0NzIxMjEsImV4cCI6MjA5ODA0ODEyMX0.m7SQ1Z0aXClGmophPA8PatVSAI6hIMe0Y8mDekNU0xw
+        run: |
+          set -euo pipefail
+          # Retry a few times: the very first request after a restart can fail during warmup.
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              "$SUPABASE_URL/rest/v1/attendance?select=id&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            echo "Attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Supabase is awake."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Supabase did not return 200 after 5 attempts."
+          exit 1
