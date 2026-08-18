@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, getStoredPasscode, storePasscode, clearStoredPasscode } from "../lib/api.js";
+import { defaultSession, SESSION_LABELS } from "../lib/sessions.js";
+import SessionToggle from "../components/SessionToggle.jsx";
 
 function PasscodeGate({ onUnlock }) {
   const [passcode, setPasscode] = useState("");
@@ -12,7 +14,7 @@ function PasscodeGate({ onUnlock }) {
     setError("");
     storePasscode(passcode);
     try {
-      await api.getOrganizerConference();
+      await api.getOrganizerConference(undefined, defaultSession());
       onUnlock();
     } catch (err) {
       clearStoredPasscode();
@@ -47,17 +49,22 @@ function PasscodeGate({ onUnlock }) {
 }
 
 function OrganizerPanel() {
+  const [session, setSession] = useState(() => defaultSession());
   const [conference, setConference] = useState(null);
   const [topicInput, setTopicInput] = useState("");
+  const [presenterInput, setPresenterInput] = useState("");
+  const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [status, setStatus] = useState("");
 
   const load = useCallback(() => {
-    api.getOrganizerConference().then((c) => {
+    setConference(null);
+    api.getOrganizerConference(undefined, session).then((c) => {
       setConference(c);
       setTopicInput(c.topic || "");
+      setPresenterInput(c.presenter || "");
     });
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     load();
@@ -65,16 +72,26 @@ function OrganizerPanel() {
 
   async function handleRegenerate() {
     if (!conference) return;
-    if (!confirm("Regenerate today's code? The previous code will stop working immediately.")) return;
-    const updated = await api.regenerateCode(conference.date);
+    if (!confirm(`Regenerate the ${SESSION_LABELS[session]} code? The previous code will stop working immediately.`))
+      return;
+    const updated = await api.regenerateCode(conference.date, session);
     setConference(updated);
   }
 
-  async function handleSaveTopic(e) {
+  async function handleSaveDetails(e) {
     e.preventDefault();
     if (!conference) return;
-    const updated = await api.setTopic(conference.date, topicInput);
-    setConference(updated);
+    setSaving(true);
+    setStatus("");
+    try {
+      const updated = await api.setDetails(conference.date, { topic: topicInput, presenter: presenterInput }, session);
+      setConference(updated);
+      setStatus("Saved.");
+    } catch (err) {
+      setStatus(`Error: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleGenerateReport() {
@@ -82,7 +99,7 @@ function OrganizerPanel() {
     setGenerating(true);
     setStatus("");
     try {
-      await api.downloadReport(conference.date);
+      await api.downloadReport(conference.date, session);
       setStatus("Report downloaded.");
     } catch (err) {
       setStatus(`Error: ${err.message}`);
@@ -96,60 +113,81 @@ function OrganizerPanel() {
     window.location.reload();
   }
 
-  if (!conference) return <div className="text-gray-500">Loading…</div>;
-
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <button onClick={handleLogout} className="text-sm text-gray-500 underline">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1">
+          <SessionToggle value={session} onChange={setSession} />
+        </div>
+        <button onClick={handleLogout} className="text-sm text-gray-500 underline whitespace-nowrap">
           Lock screen
         </button>
       </div>
 
-      <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-        <h2 className="font-bold text-gray-900">Today's Code &mdash; {conference.date}</h2>
-        <div className="text-4xl font-mono font-bold tracking-widest text-center bg-gray-50 rounded-xl py-4 text-brand-600">
-          {conference.check_in_code}
-        </div>
-        <button
-          onClick={handleRegenerate}
-          className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium"
-        >
-          Regenerate Code
-        </button>
-      </section>
+      {!conference ? (
+        <div className="text-gray-500">Loading…</div>
+      ) : (
+        <>
+          <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
+            <h2 className="font-bold text-gray-900">
+              {SESSION_LABELS[session]} Code &mdash; {conference.date}
+            </h2>
+            <div className="text-4xl font-mono font-bold tracking-widest text-center bg-gray-50 rounded-xl py-4 text-brand-600">
+              {conference.check_in_code}
+            </div>
+            <button
+              onClick={handleRegenerate}
+              className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium"
+            >
+              Regenerate Code
+            </button>
+          </section>
 
-      <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-        <h2 className="font-bold text-gray-900">Topic</h2>
-        <form onSubmit={handleSaveTopic} className="flex gap-2">
-          <input
-            type="text"
-            className="flex-1 border rounded-xl px-3 py-2"
-            placeholder="e.g. Diabetic Ketoacidosis"
-            value={topicInput}
-            onChange={(e) => setTopicInput(e.target.value)}
-          />
-          <button type="submit" className="px-4 py-2 rounded-xl bg-brand-600 text-white font-medium">
-            Save
-          </button>
-        </form>
-      </section>
+          <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
+            <h2 className="font-bold text-gray-900">Topic &amp; Presenter</h2>
+            <form onSubmit={handleSaveDetails} className="space-y-3">
+              <input
+                type="text"
+                className="w-full border rounded-xl px-3 py-2"
+                placeholder="Topic — e.g. Diabetic Ketoacidosis"
+                value={topicInput}
+                onChange={(e) => setTopicInput(e.target.value)}
+              />
+              <input
+                type="text"
+                className="w-full border rounded-xl px-3 py-2"
+                placeholder="Presenter — e.g. Dr. Patel"
+                value={presenterInput}
+                onChange={(e) => setPresenterInput(e.target.value)}
+              />
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-2.5 rounded-xl bg-brand-600 disabled:opacity-40 text-white font-medium"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </form>
+          </section>
 
-      <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
-        <h2 className="font-bold text-gray-900">Report</h2>
-        <p className="text-sm text-gray-500">
-          Generates an Excel file with name, PGY level, date, topic, and check-in time for everyone
-          checked in today.
-        </p>
-        <button
-          onClick={handleGenerateReport}
-          disabled={generating}
-          className="w-full py-3 rounded-xl bg-emerald-600 disabled:opacity-40 text-white font-semibold"
-        >
-          {generating ? "Generating…" : "Generate Report"}
-        </button>
-        {status && <p className="text-sm text-gray-600">{status}</p>}
-      </section>
+          <section className="bg-white rounded-2xl shadow-sm border p-5 space-y-3">
+            <h2 className="font-bold text-gray-900">Report</h2>
+            <p className="text-sm text-gray-500">
+              Excel file with name, PGY level, date, session, topic, presenter, and check-in time for
+              the {SESSION_LABELS[session]} conference.
+            </p>
+            <button
+              onClick={handleGenerateReport}
+              disabled={generating}
+              className="w-full py-3 rounded-xl bg-emerald-600 disabled:opacity-40 text-white font-semibold"
+            >
+              {generating ? "Generating…" : "Generate Report"}
+            </button>
+          </section>
+
+          {status && <p className="text-sm text-gray-600">{status}</p>}
+        </>
+      )}
     </div>
   );
 }
@@ -160,7 +198,7 @@ export default function Organizer() {
   useEffect(() => {
     if (getStoredPasscode()) {
       api
-        .getOrganizerConference()
+        .getOrganizerConference(undefined, defaultSession())
         .then(() => setUnlocked(true))
         .catch(() => clearStoredPasscode());
     }
